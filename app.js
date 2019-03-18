@@ -22,7 +22,33 @@ search_url.searchParams.append('_pgn','1') //page
 
 const app = express()
 
+app.get('/run', (req,res) => {
 
+    var options = {
+        
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36'
+        } }
+        request(search_url.href ,options, (error, response, html)=>{
+            if(!error && response.statusCode == 200){
+                const $ = cheerio.load(html)
+                const item_urls = {}
+       
+                $('a.s-item__link')
+                .each((i,element)=>{
+                let href = element.attribs.href
+                const shortened = href.split('?')[0]
+                // TODO: get response to each individual link here
+                item_urls[i] = shortened
+                console.log(shortened)
+                })
+                // TODO: make an object with the ISBN prop and throw the rows into the database
+                res.send(item_urls)
+            }
+            
+        })
+    
+})
 app.get('/', (req,res) =>{
 
 
