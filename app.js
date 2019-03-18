@@ -15,31 +15,21 @@ search_url.searchParams.append('_pgn','1') //page
 
 
 
-// request(completeURL, (error, response, html)=>{
-//     if(!error && response.statusCode == 200){
-//         const $ = cheerio.load(html)
-//         console.log($('.POSITIVE').text())
-//     }
-// })
+
 
 // db.authenticate().then(()=> console.log("Database connected..."))
 // .catch(err => console.log("error:"+err))
 
 const app = express()
+
+
 app.get('/', (req,res) =>{
 
 
 })
 
 app.get('/get/:id', (req,res)=> {
-    const data = {
-        listingID: "99",
-        title: "coin 1",
-        end: "tuesday",
-        price: 1300,
-        isbn: "IBNK"
-    }
-    let { listingID,title,end,price,isbn } = data
+
     console.log(req.params.id)
     listing.findByPk(req.params.id.toString()).then(item=>{
         console.log(item.dataValues)
