@@ -24,13 +24,10 @@ const app = express()
 
 
 app.get('/', (req,res) =>{
-<<<<<<< HEAD
 
     console.log("sdfklsjdflskdjflskdjfsdfkl")
 
-=======
     listing.create({listingID: "fuck", title: "fucking title"})
->>>>>>> 3fc49ed1c0a826c7acb1f4042ca03ecc6eda8882
 })
 
 app.get('/get/:id', (req,res)=> {
