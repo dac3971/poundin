@@ -32,16 +32,28 @@ app.get('/run', (req,res) => {
         request(search_url.href ,options, (error, response, html)=>{
             if(!error && response.statusCode == 200){
                 const $ = cheerio.load(html)
-                const item_urls = {}
+                const item_urls = []
        
                 $('a.s-item__link')
                 .each((i,element)=>{
-                let href = element.attribs.href
-                const shortened = href.split('?')[0]
-                // TODO: get response to each individual link here
-                item_urls[i] = shortened
-                console.log(shortened)
+                    let href = element.attribs.href
+                    const shortened = href.split('?')[0]
+                    const shortArr = shortened.split('/')
+                    const id = shortArr[shortArr.length-1]
+                    item_urls.push(`https://www.ebay.com/itm/${id}`)
                 })
+                
+                for (var i = 0, len = item_urls.length; i < len; i++) {
+                    request(item_urls[i],options, (error,response,html)=>{
+                        if(!error && response.statusCode == 200){
+                            // console.log(html)
+                            const $ = cheerio.load(html)
+                            const item = {}
+                            const isbn = $('[itemprop=productID]').text()
+                            console.log(isbn)
+                        }
+                    })
+                }
                 // TODO: make an object with the ISBN prop and throw the rows into the database
                 res.send(item_urls)
             }
