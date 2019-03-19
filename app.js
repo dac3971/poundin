@@ -24,17 +24,24 @@ const app = express()
 
 
 app.get('/', (req,res) =>{
+<<<<<<< HEAD
 
     console.log("sdfklsjdflskdjflskdjfsdfkl")
 
+=======
+    listing.create({listingID: "fuck", title: "fucking title"})
+>>>>>>> 3fc49ed1c0a826c7acb1f4042ca03ecc6eda8882
 })
 
 app.get('/get/:id', (req,res)=> {
 
     console.log(req.params.id)
     listing.findByPk(req.params.id.toString()).then(item=>{
-        console.log(item.dataValues)
-        res.send(item.dataValues)
+        if(item){
+            console.log(item.dataValues)
+            res.send(item.dataValues)
+        }else
+            res.send('no matching id')
     })
     //Puss.create({id,title,end,price,isbn}).then(puss=>console.log('done')).catch(err=>console.log(err))
     //listing.create({listingID,price}).then(listing=> console.log(listing)).catch(err=> console.log(err))
