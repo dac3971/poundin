@@ -9,6 +9,11 @@ const listing = require('./models').listing
 
 
 const app = express()
+app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+  })
 
 app.get('/run', async (req,res) => {
 
@@ -18,12 +23,6 @@ app.get('/run', async (req,res) => {
     search_url.searchParams.append('_nkw','textbook') //search term
     search_url.searchParams.append('_pgn','1') //page
 
-    // var options = {    
-    //     headers: {
-    //       'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36'
-    //     }
-    // }
-
     const html = await rp(search_url.href)
 
     const $ = cheerio.load(html)
@@ -31,17 +30,15 @@ app.get('/run', async (req,res) => {
 
     $('a.s-item__link')
     .each((i,element)=>{
-        let href = element.attribs.href
+        const href = element.attribs.href
         promiseArray.push(getPromise(concise(href)))
     })
 
     const arrayOfInfoObjects = await Promise.all(promiseArray)
 
-    console.log(arrayOfInfoObjects)
     res.send(arrayOfInfoObjects)
     
 })
-
 
 
 app.get('/get/:id', (req,res)=> {
@@ -60,8 +57,7 @@ app.get('/get/:id', (req,res)=> {
 app.get('/', async (req,res) =>{
     // TESTING A SINGLE CALL
     const info = await getPromise('https://www.ebay.com/itm/183737719795')
-    console.log(info)
-    res.send(info.isbn)
+    res.send(info)
 })
 
 
@@ -80,7 +76,7 @@ async function getPromise(url){
     const title = $('h1.it-ttl').text()
     const price = $('span#prcIsum').attr('content')
     const info = new Info(itemID, isbn, title, +price)
-    return info
+    return info.data
 }
 
 function concise(url){
@@ -92,6 +88,7 @@ function concise(url){
 
 class Info {
     private _itemID: string
+    private _url: string
     private _isbn: string
     private _title: string
     private _price: number
@@ -100,6 +97,7 @@ class Info {
         this._isbn = isbn
         this._title = title
         this._price = price
+        this._url = `https://www.ebay.com/itm/${itemID}`
     }
 
     get itemID(): string {
@@ -113,5 +111,17 @@ class Info {
     }
     get price(): number {
         return this._price
+    }
+    get url(): string {
+        return this._url
+    }
+    get data(): object {
+        return {
+            itemID: this._itemID,
+            title: this._title,
+            isbn: this._isbn,
+            price: this._price,
+            url: this._url
+        }
     }
 }

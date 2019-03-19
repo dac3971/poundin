@@ -7,27 +7,26 @@ const sequelize = require('sequelize');
 const Op = sequelize.Op;
 const listing = require('./models').listing;
 const app = express();
+app.use(function (req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+});
 app.get('/run', async (req, res) => {
     const search_url = new URL("https://www.ebay.com/sch/i.html");
     search_url.searchParams.append('_udlo', '50'); //floor price
     search_url.searchParams.append('_sop', '10'); //newly listed
     search_url.searchParams.append('_nkw', 'textbook'); //search term
     search_url.searchParams.append('_pgn', '1'); //page
-    // var options = {    
-    //     headers: {
-    //       'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36'
-    //     }
-    // }
     const html = await rp(search_url.href);
     const $ = cheerio.load(html);
     const promiseArray = [];
     $('a.s-item__link')
         .each((i, element) => {
-        let href = element.attribs.href;
+        const href = element.attribs.href;
         promiseArray.push(getPromise(concise(href)));
     });
     const arrayOfInfoObjects = await Promise.all(promiseArray);
-    console.log(arrayOfInfoObjects);
     res.send(arrayOfInfoObjects);
 });
 app.get('/get/:id', (req, res) => {
@@ -42,8 +41,7 @@ app.get('/get/:id', (req, res) => {
 app.get('/', async (req, res) => {
     // TESTING A SINGLE CALL
     const info = await getPromise('https://www.ebay.com/itm/183737719795');
-    console.log(info);
-    res.send(info.isbn);
+    res.send(info);
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, console.log(`server started on port ${PORT}`));
@@ -56,7 +54,7 @@ async function getPromise(url) {
     const title = $('h1.it-ttl').text();
     const price = $('span#prcIsum').attr('content');
     const info = new Info(itemID, isbn, title, +price);
-    return info;
+    return info.data;
 }
 function concise(url) {
     const shortened = url.split('?')[0];
@@ -70,6 +68,7 @@ class Info {
         this._isbn = isbn;
         this._title = title;
         this._price = price;
+        this._url = `https://www.ebay.com/itm/${itemID}`;
     }
     get itemID() {
         return this._itemID;
@@ -82,5 +81,17 @@ class Info {
     }
     get price() {
         return this._price;
+    }
+    get url() {
+        return this._url;
+    }
+    get data() {
+        return {
+            itemID: this._itemID,
+            title: this._title,
+            isbn: this._isbn,
+            price: this._price,
+            url: this._url
+        };
     }
 }
