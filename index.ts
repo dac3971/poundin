@@ -6,6 +6,8 @@ const url = require('url')
 const sequelize = require('sequelize')
 const Op = sequelize.Op;
 const listing = require('./models').listing
+import { concise } from './helpers/functions'
+import { Info } from './classes/Info'
 
 
 const app = express()
@@ -35,6 +37,21 @@ app.get('/run', async (req,res) => {
     })
 
     const arrayOfInfoObjects = await Promise.all(promiseArray)
+    arrayOfInfoObjects.forEach(item => {
+            listing.findOrCreate({
+                where : {
+                    listingID: item.itemID
+                },
+                defaults: {
+                    listingID: item.itemID,
+                    title: item.title
+                }
+            
+            }).spread((listingItem, created) =>{
+                
+    
+            })
+        })
 
     res.send(arrayOfInfoObjects)
     
@@ -73,55 +90,8 @@ async function getPromise(url){
     const html = await rp.get(url)
     const $ = cheerio.load(html)
     const isbn = $('[itemprop=productID]').text()
-    const title = $('h1.it-ttl').text()
+    const title = $('h1.it-ttl').find($('span'))[0].next.data
     const price = $('span#prcIsum').attr('content')
     const info = new Info(itemID, isbn, title, +price)
     return info.data
-}
-
-function concise(url){
-    const shortened = url.split('?')[0]
-    const shortArr = shortened.split('/')
-    const id = shortArr[shortArr.length-1]
-    return `https://www.ebay.com/itm/${id}`
-}
-
-class Info {
-    private _itemID: string
-    private _url: string
-    private _isbn: string
-    private _title: string
-    private _price: number
-    constructor(itemID: string,isbn?: string,title?: string,price?: number){
-        this._itemID = itemID
-        this._isbn = isbn
-        this._title = title
-        this._price = price
-        this._url = `https://www.ebay.com/itm/${itemID}`
-    }
-
-    get itemID(): string {
-        return this._itemID
-    }
-    get isbn(): string {
-        return this._isbn
-    }
-    get title(): string {
-        return this._title
-    }
-    get price(): number {
-        return this._price
-    }
-    get url(): string {
-        return this._url
-    }
-    get data(): object {
-        return {
-            itemID: this._itemID,
-            title: this._title,
-            isbn: this._isbn,
-            price: this._price,
-            url: this._url
-        }
-    }
 }
