@@ -26,8 +26,37 @@ app.get('/run', async (req, res) => {
         const href = element.attribs.href;
         promiseArray.push(getPromise(concise(href)));
     });
-    const arrayOfInfoObjects = await Promise.all(promiseArray);
-    res.send(arrayOfInfoObjects);
+    const arrayOfInfoObjects = await Promise.all(promiseArray).then(values =>{
+        
+        values.forEach(item => {
+            listing.findOrCreate({
+                where : {
+                    listingID: item.itemID
+                },
+                defaults: {
+                    listingID: item.itemID,
+                    title: item.title
+                }
+            
+            }).spread((listingItem, created) =>{
+                
+    
+            })
+        })
+
+        
+        
+        })
+
+        
+
+
+    
+
+    
+    
+
+    
 });
 app.get('/get/:id', (req, res) => {
     console.log(req.params.id);
@@ -45,6 +74,15 @@ app.get('/', async (req, res) => {
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, console.log(`server started on port ${PORT}`));
+
+function insertInfo(info_list){
+
+    info_list.array.forEach(element => {
+        console.log(element)
+    });
+
+}
+
 async function getPromise(url) {
     const urlArr = url.split('/');
     const itemID = urlArr[urlArr.length - 1];
