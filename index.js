@@ -56,19 +56,46 @@ app.get('/get/:id', (req, res) => {
 });
 app.get('/', async (req, res) => {
     // TESTING A SINGLE CALL
-    const info = await getPromise('https://www.ebay.com/itm/183737719795');
+    const info = await getPromise('https://www.ebay.com/itm/132891364981');
     res.send(info);
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, console.log(`server started on port ${PORT}`));
 async function getPromise(url) {
+    
     const urlArr = url.split('/');
     const itemID = urlArr[urlArr.length - 1];
+    
+    const info = new Info_1.Info(itemID);
+    
     const html = await rp.get(url);
     const $ = cheerio.load(html);
-    const isbn = $('[itemprop=productID]').text();
-    const title = $('h1.it-ttl').find($('span'))[0].next.data;
-    const price = $('span#prcIsum').attr('content');
-    const info = new Info_1.Info(itemID, isbn, title, +price);
+
+    
+    info.itemID = itemID
+    info._isbn = $('[itemprop=productID]').text();
+    info._title = $('h1.it-ttl').find($('span'))[0].next.data;
+    info._price = $('span#prcIsum').attr('content');
+    
+    //buy options
+    
+    info.listingOptions._bestOffer = $('#boBtn_btn').length > 0 ? true : null
+    info.listingOptions._buyItNow = $('#binBtn_btn').length > 0 ? true : null   
+    info.listingOptions._bid =   $('#bidBtn_btn').length > 0 ? true : null
+
+
+
+
+
+    // const b = $('[class="u-flL"]').each((index, element)=>{
+    //     //console.log($(element).find('span').prev().text())
+    //     const x = $(element).html()
+    //     console.log($(element).html())
+        
+        
+    // })
+    
+    console.log(info.data)
+    
     return info.data;
 }
