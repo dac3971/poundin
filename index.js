@@ -84,16 +84,6 @@ async function getPromise(url) {
     info.listingOptions._bid =   $('#bidBtn_btn').length > 0 ? true : null
 
 
-
-
-
-    // const b = $('[class="u-flL"]').each((index, element)=>{
-    //     //console.log($(element).find('span').prev().text())
-    //     const x = $(element).html()
-    //     console.log($(element).html())
-        
-        
-    // })
     
     console.log(info.data)
     
