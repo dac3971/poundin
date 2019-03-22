@@ -17,6 +17,14 @@ app.use(function(req, res, next) {
     next();
   })
 
+
+app.get('/', async (req,res) =>{
+    // TESTING A SINGLE CALL
+    const info = await processData('https://www.ebay.com/itm/132891364981')
+    res.send(info)
+})
+
+
 app.get('/run', async (req,res) => {
 
     const search_url = new URL("https://www.ebay.com/sch/i.html")
@@ -32,8 +40,11 @@ app.get('/run', async (req,res) => {
 
     $('a.s-item__link')
     .each((i,element)=>{
-        const href = element.attribs.href
-        promiseArray.push(getPromise(concise(href)))
+        const smallUrl = concise(element.attribs.href)
+        const urlArr = smallUrl.split('/')
+        const itemID = urlArr[urlArr.length-1]
+        //check if we have the itemID already
+        promiseArray.push(processData(smallUrl))
     })
 
     const arrayOfInfoObjects = await Promise.all(promiseArray)
@@ -53,7 +64,7 @@ app.get('/run', async (req,res) => {
             })
         })
 
-    res.send(arrayOfInfoObjects)
+    res.send('')//arrayOfInfoObjects)
     
 })
 
@@ -71,27 +82,22 @@ app.get('/get/:id', (req,res)=> {
 })
 
 
-app.get('/', async (req,res) =>{
-    // TESTING A SINGLE CALL
-    const info = await getPromise('https://www.ebay.com/itm/183737719795')
-    res.send(info)
-})
-
-
 const PORT = process.env.PORT || 5000
 
 
 app.listen(PORT, console.log(`server started on port ${PORT}`))
 
-async function getPromise(url){
+async function processData(url){
     const urlArr = url.split('/')
     const itemID = urlArr[urlArr.length-1]
-
     const html = await rp.get(url)
     const $ = cheerio.load(html)
     const isbn = $('[itemprop=productID]').text()
     const title = $('h1.it-ttl').find($('span'))[0].next.data
     const price = $('span#prcIsum').attr('content')
-    const info = new Info(itemID, isbn, title, +price)
+    const auc = $('#bidBtn_btn').length > 0
+    const bin = $('#binBtn_btn').length > 0
+    const offer = $('#boBtn_btn').length > 0
+    const info = new Info(itemID, isbn, title, +price, auc, bin, offer)
     return info.data
 }
