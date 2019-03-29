@@ -19,7 +19,8 @@ app.use(function (req, res, next) {
 });
 app.get('/', async (req, res) => {
     // TESTING A SINGLE CALL
-    const info = await processData('https://www.ebay.com/itm/163474335398');
+    // const info = await processData('https://www.ebay.com/itm/163474335398')
+    const info = await processProfile('0683083678');
     res.send(info);
 });
 app.get('/run', async (req, res) => {
@@ -97,25 +98,56 @@ async function processData(url) {
     const info = new Info_1.Info(itemID, isbn, title, edition, author, +price, +endTimestamp, auc, bin, offer);
     return info.data;
 }
-async function processProfile(url) {
-    const urlArr = url.split('/');
-    const isbn = urlArr[urlArr.length - 1];
-    // const html = await rp.get(url)
-    // const $ = cheerio.load(html)
-    // const isbn = $('[itemprop=productID]').text()
-    // const title = $('h1.it-ttl').find($('span'))[0].next.data
-    // const edition = $('td').filter(function() {
-    //     return $(this).text().trim() === 'Edition Number:';
-    //   }).next('td').find('span').text()
-    // const author = $('td').filter(function() {
-    //     return $(this).text().trim() === 'Author';
-    //   }).next('td').text().trim()
-    // //($('td.attrLabels').next().children()[0].children[0].data)
-    // const price = $('span#prcIsum').attr('content')
-    // const endTimestamp = $('.timeMs').attribs ? $('.timeMs').attribs.timems : 0
-    // const auc = $('#bidBtn_btn').length > 0
-    // const bin = $('#binBtn_btn').length > 0
-    // const offer = $('#boBtn_btn').length > 0
-    const profile = new Profile_1.Profile(isbn);
+async function processProfile(isbn) {
+    const priceArr = [];
+    const ebayURL = createEbayURL(isbn);
+    const camelURL = createCamelURL(isbn);
+    const isbnURL = '';
+    const resultsHTML = await Promise.all([rp.get(ebayURL), rp.get(camelURL)]);
+    const $ = cheerio.load(resultsHTML[0]);
+    $('span.s-item__price').find('span.POSITIVE').not('span.ITALIC').each(function (i, elem) {
+        console.log($(this).text());
+        priceArr.push($(this).text());
+    });
+    const avgEbayPrice = Math.round(avgInArray(priceArr) * 100) / 100;
+    const camelPrice = cheerio.load(resultsHTML[1])('div.pricetype_label').filter(function () {
+        return $(this).text().trim() === '3rd Party Used';
+    }).parent().next().next().next('td').find('span.black').text().trim();
+    console.log("avg Ebay: $" + avgEbayPrice);
+    console.log("camel: " + makeInt(camelPrice));
+    const title = '';
+    const edition = '';
+    const author = '';
+    const imgURL = '';
+    const profile = new Profile_1.Profile(isbn, title, edition, author, avgEbayPrice, imgURL, priceArr.length, 4);
     return profile.data;
+}
+function createEbayURL(searchTerms) {
+    const base = "https://www.ebay.com/sch/i.html?";
+    const keywords = `_nkw=${searchTerms}`;
+    const category = "&_sacat=0";
+    //const pageNumber = "&_pgn=1"
+    //const itemsPerPage = "&_ipg=200"
+    //const alsoSearchDesc = "&LH_TitleDesc=0"
+    // const priceFloor = "&_udlo=70"
+    //const otherCat = "&_osacat=0"
+    //const otherKeyword = "&_odkw=book"
+    const completed = "&LH_Complete=1&rt=nc";
+    const sold = "&LH_Sold=1";
+    const usaOnly = "&LH_PrefLoc=1";
+    const completeURL = base.concat(keywords, category, completed, sold, usaOnly);
+    return completeURL;
+}
+function createCamelURL(isbn) {
+    return `https://camelcamelcamel.com/product/${isbn}`;
+}
+function avgInArray(arr) {
+    let total = 0;
+    for (let i = 0; i < arr.length; i++) {
+        total += makeInt(arr[i]);
+    }
+    return total / arr.length;
+}
+function makeInt(dollarAmount) {
+    return Number(dollarAmount.replace(/[^0-9.-]+/g, ""));
 }
