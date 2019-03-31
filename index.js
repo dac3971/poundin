@@ -7,7 +7,8 @@ const rp = require("request-promise");
 const url = require('url');
 const sequelize = require('sequelize');
 const Op = sequelize.Op;
-const listing = require('./models').listing;
+const textbooklistings = require('./models').textbooklistings;
+const listing = require('./models').listing
 const functions_1 = require("./helpers/functions");
 const Info_1 = require("./classes/Info");
 const app = express();
@@ -19,6 +20,7 @@ app.use(function (req, res, next) {
 app.get('/', async (req, res) => {
     // TESTING A SINGLE CALL
     const info = await processData('https://www.ebay.com/itm/132891364981');
+       
     res.send(info);
 });
 app.get('/run', async (req, res) => {
@@ -30,32 +32,44 @@ app.get('/run', async (req, res) => {
     const html = await rp(search_url.href);
     const $ = cheerio.load(html);
     const promiseArray = [];
+    const dbFindByPkArray = []
     $('a.s-item__link')
         .each((i, element) => {
         const smallUrl = functions_1.concise(element.attribs.href);
         const urlArr = smallUrl.split('/');
         const itemID = urlArr[urlArr.length - 1];
-        //check if we have the itemID already
-        promiseArray.push(processData(smallUrl));
+        //check if item already exists in DB
+        dbFindByPkArray.push(textbooklistings.findByPk(itemID).then(listing => {
+          return {url: smallUrl, payload: listing}
+            
+        }))      
     });
+    
+    const db = await Promise.all(dbFindByPkArray)
+    db.forEach(dbOb =>{       
+        if (dbOb.payload == null){
+            
+            promiseArray.push(processData(dbOb.url))
+            //console.log(dbOb)
+        }           
+    })
+
     const arrayOfInfoObjects = await Promise.all(promiseArray);
     arrayOfInfoObjects.forEach(item => {
-        listing.findOrCreate({
-            where: {
-                listingID: item.itemID
-            },
-            defaults: {
-                listingID: item.itemID,
-                title: item.title
-            }
-        }).spread((listingItem, created) => {
-        });
+        
+        textbooklistings.create(
+         {
+            listingID: item.itemID
+         
+        }   
+        )
     });
-    res.send(''); //arrayOfInfoObjects)
+    res.send(arrayOfInfoObjects); //arrayOfInfoObjects)
 });
+
 app.get('/get/:id', (req, res) => {
     console.log(req.params.id);
-    listing.findByPk(req.params.id.toString()).then(item => {
+    textbooklistings.findByPk(req.params.id.toString()).then(item => {
         console.log(item.dataValues);
         res.send(item.dataValues);
     });
@@ -64,7 +78,9 @@ app.get('/get/:id', (req, res) => {
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, console.log(`server started on port ${PORT}`));
+
 async function processData(url) {
+    
     const urlArr = url.split('/');
     const itemID = urlArr[urlArr.length - 1];
     const html = await rp.get(url);
