@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class Info {
-    constructor(itemID, isbn, title, edition, author, price, endTimestamp, auction, buyItNow, bestOffer) {
+    constructor(itemID, isbn, title, edition, author, price, endTimestamp, auction, buyItNow, bestOffer,seller,sellerCount) {
         this.itemID = itemID;
         this.isbn = isbn;
         this.title = title;
@@ -12,6 +12,8 @@ class Info {
         this.auction = auction;
         this.buyItNow = buyItNow;
         this.bestOffer = bestOffer;
+        this.seller = seller
+        this.sellerCount = sellerCount
     }
     get data() {
         return {
@@ -25,7 +27,10 @@ class Info {
             endTimestamp: this.endTimestamp,
             auction: this.auction,
             buyItNow: this.buyItNow,
-            bestOffer: this.bestOffer
+            bestOffer: this.bestOffer,
+            seller: this.seller,
+            sellerCount: this.sellerCount
+
         };
     }
 }
