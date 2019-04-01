@@ -63,7 +63,7 @@ app.get('/run', async (req, res) => {
         }).spread((listingItem, created) => {
         });
     });
-    res.send(''); //arrayOfInfoObjects)
+    res.send(arrayOfInfoObjects); //arrayOfInfoObjects)
 });
 app.get('/get/:id', (req, res) => {
     console.log(req.params.id);
@@ -76,6 +76,8 @@ app.get('/get/:id', (req, res) => {
 });
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, console.log(`server started on port ${PORT}`));
+
+
 async function processData(url) {
     const urlArr = url.split('/');
     const itemID = urlArr[urlArr.length - 1];
@@ -83,71 +85,74 @@ async function processData(url) {
     const $ = cheerio.load(html);
     const isbn = $('[itemprop=productID]').text();
     const title = $('h1.it-ttl').find($('span'))[0].next.data;
+
     const edition = $('td').filter(function () {
         return $(this).text().trim() === 'Edition Number:';
     }).next('td').find('span').text();
+
     const author = $('td').filter(function () {
         return $(this).text().trim() === 'Author';
     }).next('td').text().trim();
-    //($('td.attrLabels').next().children()[0].children[0].data)
+
+    const seller = $('.mbg-nw').text()
+    const sellerCount = parseInt($('.mbg-l').text().match(/\d+/)[0])
     const price = $('span#prcIsum').attr('content');
-    const endTimestamp = $('.timeMs').attribs ? $('.timeMs').attribs.timems : 0;
+    const endTimestamp = $('.timeMs').attribs ? $('.timeMs').attribs.timems : null;
     const auc = $('#bidBtn_btn').length > 0;
     const bin = $('#binBtn_btn').length > 0;
     const offer = $('#boBtn_btn').length > 0;
-    const info = new Info_1.Info(itemID, isbn, title, edition, author, +price, +endTimestamp, auc, bin, offer);
+    const info = new Info_1.Info(itemID, isbn, title, edition, author, +price, +endTimestamp, auc, bin, offer,seller,sellerCount);
     return info.data;
 }
 async function processProfile(isbn) {
     const priceArr = [];
-    const ebayURL = createEbayURL(isbn);
+    const ebayURL = createEbayURL(isbn,1);
     const camelURL = createCamelURL(isbn);
     const isbnURL = '';
     const resultsHTML = await Promise.all([rp.get(ebayURL), rp.get(camelURL)]);
     const $ = cheerio.load(resultsHTML[0]);
+    
     $('span.s-item__price').find('span.POSITIVE').not('span.ITALIC').each(function (i, elem) {
-        console.log($(this).text());
-        priceArr.push($(this).text());
+
+        let price = parseFloat($(this).text().replace("$",''))      
+        priceArr.push(price);
     });
-    const avgEbayPrice = Math.round(avgInArray(priceArr) * 100) / 100;
+
+    //const avgEbayPrice = Math.round(avgInArray(priceArr) * 100) / 100;
+    let avg = (priceArr.reduce((previous, current) => previous += current) / priceArr.length).toFixed(2)
+    let minPrice = Math.min(...priceArr)
+    let maxPrice = Math.max(...priceArr)
+    
     const camelPrice = cheerio.load(resultsHTML[1])('div.pricetype_label').filter(function () {
         return $(this).text().trim() === '3rd Party Used';
     }).parent().next().next().next('td').find('span.black').text().trim();
-    console.log("avg Ebay: $" + avgEbayPrice);
-    console.log("camel: " + makeInt(camelPrice));
+
+    console.log("Min: $" +minPrice)
+    console.log("Max: $" +maxPrice)
+    console.log("avg Ebay: $" + avg);
+    console.log(camelPrice)
+    console.log("camel: $" + parseFloat(camelPrice.replace("$",'')))
     const title = '';
     const edition = '';
     const author = '';
     const imgURL = '';
-    const profile = new Profile_1.Profile(isbn, title, edition, author, avgEbayPrice, imgURL, priceArr.length, 4);
+    const profile = new Profile_1.Profile(isbn, title, edition, author, avg, imgURL, priceArr.length, 4);
     return profile.data;
 }
-function createEbayURL(searchTerms) {
+function createEbayURL(searchterm, sold) {
+    
     const base = "https://www.ebay.com/sch/i.html?";
-    const keywords = `_nkw=${searchTerms}`;
-    const category = "&_sacat=0";
-    //const pageNumber = "&_pgn=1"
-    //const itemsPerPage = "&_ipg=200"
-    //const alsoSearchDesc = "&LH_TitleDesc=0"
-    // const priceFloor = "&_udlo=70"
-    //const otherCat = "&_osacat=0"
-    //const otherKeyword = "&_odkw=book"
-    const completed = "&LH_Complete=1&rt=nc";
-    const sold = "&LH_Sold=1";
-    const usaOnly = "&LH_PrefLoc=1";
-    const completeURL = base.concat(keywords, category, completed, sold, usaOnly);
-    return completeURL;
+    let soldURL = new URL(base)
+    soldURL.searchParams.append('_nkw',searchterm)
+    soldURL.searchParams.append('_sacat',0)
+    soldURL.searchParams.append('LH_Complete',sold)
+    soldURL.searchParams.append('rt','nc')
+    soldURL.searchParams.append('LH_Sold',sold)
+    soldURL.searchParams.append('LH_PrefLoc',1)
+    
+    return soldURL.href;
 }
 function createCamelURL(isbn) {
     return `https://camelcamelcamel.com/product/${isbn}`;
 }
-function avgInArray(arr) {
-    let total = 0;
-    for (let i = 0; i < arr.length; i++) {
-        total += makeInt(arr[i]);
-    }
-    return total / arr.length;
-}
-function makeInt(dollarAmount) {
-    return Number(dollarAmount.replace(/[^0-9.-]+/g, ""));
-}
+
