@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class Info {
-    constructor(itemID, isbn, title, edition, author, price, endTimestamp, auction, buyItNow, bestOffer) {
-        this.itemID = itemID;
+    constructor(listingID, isbn, title, edition, author, price, endTimestamp, auction, buyItNow, bestOffer, seller, sellerCt) {
+        this.listingID = listingID;
         this.isbn = isbn;
         this.title = title;
         this.edition = edition;
@@ -12,20 +12,24 @@ class Info {
         this.auction = auction;
         this.buyItNow = buyItNow;
         this.bestOffer = bestOffer;
+        this.seller = seller;
+        this.sellerCt = sellerCt;
     }
     get data() {
         return {
-            itemID: this.itemID,
+            listingID: this.listingID,
             isbn: this.isbn,
             title: this.title,
             edition: this.edition,
             author: this.author,
             price: this.price,
-            url: `https://www.ebay.com/itm/${this.itemID}`,
+            url: `https://www.ebay.com/itm/${this.listingID}`,
             endTimestamp: this.endTimestamp,
             auction: this.auction,
             buyItNow: this.buyItNow,
-            bestOffer: this.bestOffer
+            bestOffer: this.bestOffer,
+            seller: this.seller,
+            sellerCt: this.sellerCt
         };
     }
 }
