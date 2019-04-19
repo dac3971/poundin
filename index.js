@@ -2,17 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express = require("express");
 const cheerio = require("cheerio");
-const request = require("request");
 const rp = require("request-promise");
-const url = require('url');
-const sequelize = require('sequelize');
-const Op = sequelize.Op;
 const models = require('./models');
 const item = require('./models').item;
 const profile = require('./models').profile;
 const functions_1 = require("./helpers/functions");
-const Info_1 = require("./classes/Info");
-const Profile_1 = require("./classes/Profile");
 const app = express();
 app.use(function (req, res, next) {
     res.header("Access-Control-Allow-Origin", "*");
@@ -40,25 +34,41 @@ app.get('/run', async (req, res) => {
         const smallUrl = functions_1.concise(element.attribs.href);
         const urlArr = smallUrl.split('/');
         const itemID = urlArr[urlArr.length - 1];
-        checkByPkArray.push(item.findByPk(itemID).then(i => {
-            if (i)
+        checkByPkArray.push(item.findByPk(itemID).then(itemModel => {
+            if (itemModel)
                 return;
             return smallUrl;
         }).catch(e => console.log(e.toString())));
     });
     const results = await Promise.all(checkByPkArray);
     const urlsToProcess = results.filter(el => el != null); //remove nulls
-    let itemsWritten = 0;
+    let itemsWritten = 0, profilesWritten = 0;
     urlsToProcess.forEach(async (url) => {
-        const infoObj = await processData(url);
+        const itemModel = await processData(url);
         // console.log(infoObj)
-        item.create(infoObj).then(i => {
-            itemsWritten++;
-            htmlResponse += `<li>Wrote: ${JSON.stringify(infoObj)}</li>`;
-            res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`);
-            if (itemsWritten === urlsToProcess.length)
-                res.end();
-        });
+        const isbn = itemModel.getDataValue('isbn');
+        //check if its in profiles yet
+        if (isbn)
+            profile.findByPk(isbn).then(async (profModel) => {
+                const finalProfModel = !profModel ? await processProfile(isbn) : profModel;
+                if (!profModel)
+                    await finalProfModel.save().catch(e => console.log(e.toString()));
+                await itemModel.save().then(writtenItemModel => {
+                    itemsWritten++;
+                    htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`;
+                    res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`);
+                    if (itemsWritten === urlsToProcess.length)
+                        res.end();
+                }).catch(e => console.log(e.toString()));
+            });
+        // await profile.findByPk(infoObj.isbn).then(async p => {
+        //     if(p) return
+        //     prof = await processProfile(infoObj.isbn)
+        //     prof.create(prof.data).then(pro => {
+        //         profilesWritten++
+        //         console.log(pro)//+' profiles written: '+profilesWritten)
+        //     })
+        // })
     });
 });
 app.get('/get/:id', (req, res) => {
@@ -95,8 +105,21 @@ async function processData(url) {
     const auc = $('#bidBtn_btn').length > 0;
     const bin = $('#binBtn_btn').length > 0;
     const offer = $('#boBtn_btn').length > 0;
-    const info = new Info_1.Info(listingID, isbn, title, edition, author, +price, +endTimestamp, auc, bin, offer, seller, +sellerCt);
-    return info.data;
+    const itemModel = item.build({
+        listingID: listingID,
+        isbn: isbn,
+        title: title,
+        edition: edition,
+        author: author,
+        price: +price,
+        endTimestamp: +endTimestamp,
+        auction: auc,
+        bin: bin,
+        bestOffer: offer,
+        seller: seller,
+        sellerCount: +sellerCt
+    });
+    return itemModel;
 }
 async function processProfile(isbn) {
     const priceArr = [];
@@ -109,22 +132,32 @@ async function processProfile(isbn) {
         const price = parseFloat($(this).text().replace("$", ''));
         priceArr.push(price);
     });
-    const avgEbayPrice = (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2);
+    // const avgEbayPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
     let minPrice = Math.min(...priceArr);
     let maxPrice = Math.max(...priceArr);
     const camelPrice = cheerio.load(resultsHTML[1])('div.pricetype_label').filter(function () {
         return $(this).text().trim() === '3rd Party Used';
-    }).parent().next().next().next('td').find('span.black').text().trim();
-    console.log("Min: $" + minPrice);
-    console.log("Max: $" + maxPrice);
-    console.log("avg Ebay: $" + avgEbayPrice);
-    console.log("camel: " + camelPrice);
+    }).parent().next().next().next('td').find('span.black').text().trim()
+        || 0;
+    if (camelPrice > 0)
+        priceArr.push(camelPrice);
+    const avgPrice = priceArr.length > 0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0;
     const title = '';
     const edition = '';
     const author = '';
     const imgURL = '';
-    const profile = new Profile_1.Profile(isbn, title, edition, author, +avgEbayPrice, imgURL, priceArr.length, 4);
-    return profile.data;
+    // const profile = new Profile(isbn,title,edition,author,+avgEbayPrice,imgURL,priceArr.length,4)
+    const prof = profile.build({
+        isbn: isbn,
+        title: title,
+        edition: edition,
+        author: author,
+        avgPrice: avgPrice,
+        imgURL: imgURL,
+        supply: priceArr.length,
+        demand: 0
+    });
+    return prof;
 }
 function createEbayURL(searchTerms) {
     const base = "https://www.ebay.com/sch/i.html?";
