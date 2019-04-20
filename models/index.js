@@ -5,8 +5,8 @@ const sequelize = new Sequelize('poundinpuss','postgres','testing12',{//config.d
 });
 
 const models = {
-  profile: sequelize.import('./profile'),
-  item: sequelize.import('./item')
+  Profile: sequelize.import('./profile'),
+  Item: sequelize.import('./item')
 }
 
 Object.keys(models).forEach(modelName => {

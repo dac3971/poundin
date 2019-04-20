@@ -14,7 +14,9 @@ module.exports = (sequelize, DataTypes) => {
         demand: DataTypes.INTEGER
     })
 
-    Profile.associate = (models) => {}
+    Profile.associate = (models) => {
+        // Profile.hasMany(models.Item, {foreignKey: 'isbn'})
+    }
 
     return Profile
 }

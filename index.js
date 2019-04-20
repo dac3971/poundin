@@ -4,8 +4,8 @@ const express = require("express");
 const cheerio = require("cheerio");
 const rp = require("request-promise");
 const models = require('./models');
-const item = require('./models').item;
-const profile = require('./models').profile;
+const Item = require('./models').Item;
+const Profile = require('./models').Profile;
 const functions_1 = require("./helpers/functions");
 const app = express();
 app.use(function (req, res, next) {
@@ -16,8 +16,11 @@ app.use(function (req, res, next) {
 app.get('/', async (req, res) => {
     // TESTING A SINGLE CALL
     // const info = await processData('https://www.ebay.com/itm/163474335398')
-    const info = await processProfile('0683083678');
-    res.send(info);
+    // const info = await processProfile('0683083678')
+    // res.send(info)
+    Item.findAll({ where: { isbn: '9780849322174' } }).then(r => {
+        r.forEach(row => console.log(row.toString()));
+    });
 });
 app.get('/run', async (req, res) => {
     let htmlResponse = '<ul>';
@@ -27,6 +30,7 @@ app.get('/run', async (req, res) => {
     search_url.searchParams.append('_sop', '10'); //newly listed
     search_url.searchParams.append('_nkw', 'textbook'); //search term
     search_url.searchParams.append('_pgn', '1'); //page
+    search_url.searchParams.append('_ipg', '25'); //items per page
     const html = await rp(search_url.href);
     const $ = cheerio.load(html);
     $('a.s-item__link')
@@ -34,7 +38,8 @@ app.get('/run', async (req, res) => {
         const smallUrl = functions_1.concise(element.attribs.href);
         const urlArr = smallUrl.split('/');
         const itemID = urlArr[urlArr.length - 1];
-        checkByPkArray.push(item.findByPk(itemID).then(itemModel => {
+        // console.log(itemID)
+        checkByPkArray.push(Item.findByPk(itemID).then(itemModel => {
             if (itemModel)
                 return;
             return smallUrl;
@@ -49,10 +54,11 @@ app.get('/run', async (req, res) => {
         const isbn = itemModel.getDataValue('isbn');
         //check if its in profiles yet
         if (isbn)
-            profile.findByPk(isbn).then(async (profModel) => {
+            Profile.findByPk(isbn).then(async (profModel) => {
                 const finalProfModel = !profModel ? await processProfile(isbn) : profModel;
                 if (!profModel)
                     await finalProfModel.save().catch(e => console.log(e.toString()));
+                itemModel.setDataValue('spread', finalProfModel.getDataValue('avgPrice') - itemModel.getDataValue('price'));
                 await itemModel.save().then(writtenItemModel => {
                     itemsWritten++;
                     htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`;
@@ -87,7 +93,7 @@ models.sequelize.sync().then(() => {
 async function processData(url) {
     const urlArr = url.split('/');
     const listingID = urlArr[urlArr.length - 1];
-    const html = await rp.get(url);
+    const html = await rp.get(url).catch(e => console.log(e.toString()));
     const $ = cheerio.load(html);
     const isbn = $('[itemprop=productID]').text();
     const title = $('h1.it-ttl').find($('span'))[0].next.data;
@@ -105,7 +111,7 @@ async function processData(url) {
     const auc = $('#bidBtn_btn').length > 0;
     const bin = $('#binBtn_btn').length > 0;
     const offer = $('#boBtn_btn').length > 0;
-    const itemModel = item.build({
+    const itemModel = Item.build({
         listingID: listingID,
         isbn: isbn,
         title: title,
@@ -147,7 +153,7 @@ async function processProfile(isbn) {
     const author = '';
     const imgURL = '';
     // const profile = new Profile(isbn,title,edition,author,+avgEbayPrice,imgURL,priceArr.length,4)
-    const prof = profile.build({
+    const prof = Profile.build({
         isbn: isbn,
         title: title,
         edition: edition,
@@ -160,20 +166,26 @@ async function processProfile(isbn) {
     return prof;
 }
 function createEbayURL(searchTerms) {
-    const base = "https://www.ebay.com/sch/i.html?";
-    const keywords = `_nkw=${searchTerms}`;
-    const category = "&_sacat=0";
+    const url = new URL("https://www.ebay.com/sch/i.html");
+    url.searchParams.append('_nkw', searchTerms); //search terms
+    url.searchParams.append('LH_Complete', '1'); //complete
+    url.searchParams.append('LH_Sold', '1'); //sold
+    url.searchParams.append('LH_PrefLoc', '1'); //prefLoc
+    // url.searchParams.append('_ipg','25') //items per page
+    // const base = "https://www.ebay.com/sch/i.html?"
+    // const keywords = `_nkw=${searchTerms}`
+    // const category = "&_sacat=0"
     //const pageNumber = "&_pgn=1"
     //const itemsPerPage = "&_ipg=200"
     //const alsoSearchDesc = "&LH_TitleDesc=0"
     // const priceFloor = "&_udlo=70"
     //const otherCat = "&_osacat=0"
     //const otherKeyword = "&_odkw=book"
-    const completed = "&LH_Complete=1&rt=nc";
-    const sold = "&LH_Sold=1";
-    const usaOnly = "&LH_PrefLoc=1";
-    const completeURL = base.concat(keywords, category, completed, sold, usaOnly);
-    return completeURL;
+    // const completed = "&LH_Complete=1&rt=nc"
+    // const sold = "&LH_Sold=1"
+    // const usaOnly = "&LH_PrefLoc=1"
+    // const completeURL = base.concat(keywords,category,completed,sold,usaOnly)
+    return url.href;
 }
 function createCamelURL(isbn) {
     return `https://camelcamelcamel.com/product/${isbn}`;

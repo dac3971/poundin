@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
         edition: DataTypes.STRING,
         author: DataTypes.STRING,
         price: DataTypes.FLOAT,
+        spread: DataTypes.FLOAT,
         endTimestamp: DataTypes.INTEGER,
         auction: DataTypes.BOOLEAN,
         bin: DataTypes.BOOLEAN,
@@ -18,7 +19,9 @@ module.exports = (sequelize, DataTypes) => {
         sellerCount: DataTypes.INTEGER
     })
 
-    Item.associate = (models) => {}
+    Item.associate = (models) => {
+        // Item.belongsTo(models.Profile, {foreignKey: 'isbn'})
+    }
 
     return Item
 }
