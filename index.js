@@ -18,10 +18,51 @@ app.get('/', async (req, res) => {
     // const info = await processData('https://www.ebay.com/itm/163474335398')
     // const info = await processProfile('0683083678')
     // res.send(info)
-    Item.findAll({ where: { isbn: '9780849322174' } }).then(r => {
-        r.forEach(row => console.log(row.toString()));
-    });
+    // Item.findAll({ where: { isbn: '9780849322174' } }).then(r => {
+    //     r.forEach(row => console.log(row.toString()));
+    // });
+    
 });
+app.get('/isbn/:isbn', async (req,res) => {
+    let isbnOb = new Object();
+    console.log(req.params)
+    const html = await rp(`https://isbndb.com/book/${req.params.isbn}`);
+    const $ = cheerio.load(html);
+
+    let table   = $('.table.table-hover.table-responsive ').find('th')
+    
+    let title = table.filter(function(){
+        
+        return $(this).text().toLowerCase() == 'full title'
+    }).next('td').text()
+    
+
+    let edition = table.filter(function(){
+        
+        return $(this).text().toLowerCase() == 'edition'
+    }).next('td').text()
+
+    let publishDate = table.filter(function(){
+        
+        return $(this).text().toLowerCase() == 'publish date'
+    }).next('td').text()
+    let authorList = []
+    table.filter(function(){
+        
+        return $(this).text().toLowerCase() == 'authors'
+    }).next('td').find('a').each(function (i,elem){
+        authorList.push($(this).text())
+    })
+    isbnOb.author       = authorList.length > 0 ? authorList.join(';') : null
+    isbnOb.title        = title ? title : null  
+    isbnOb.edition      = edition ? edition : null
+    isbnOb.publishDate  = publishDate ? publishDate : null
+
+    res.end(JSON.stringify(isbnOb))
+    // const edition = $('td').filter(function () {
+    //     return $(this).text().trim() === 'Edition Number:';
+    // }).next('td').find('span').text();
+})
 app.get('/run', async (req, res) => {
     let htmlResponse = '<ul>';
     const checkByPkArray = [];
@@ -134,10 +175,11 @@ async function processProfile(isbn) {
     const isbnURL = '';
     const resultsHTML = await Promise.all([rp.get(ebayURL), rp.get(camelURL)]); //add the isbn page promise
     const $ = cheerio.load(resultsHTML[0]);
-    $('span.s-item__price').find('span.POSITIVE').not('span.ITALIC').each(function (i, elem) {
+    $('span.s-item__price').each(function (i,elem){
         const price = parseFloat($(this).text().replace("$", ''));
         priceArr.push(price);
-    });
+    })
+
     // const avgEbayPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
     let minPrice = Math.min(...priceArr);
     let maxPrice = Math.max(...priceArr);
@@ -148,29 +190,66 @@ async function processProfile(isbn) {
     if (camelPrice > 0)
         priceArr.push(camelPrice);
     const avgPrice = priceArr.length > 0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0;
-    const title = '';
-    const edition = '';
-    const author = '';
-    const imgURL = '';
-    // const profile = new Profile(isbn,title,edition,author,+avgEbayPrice,imgURL,priceArr.length,4)
-    const prof = Profile.build({
-        isbn: isbn,
-        title: title,
-        edition: edition,
-        author: author,
-        avgPrice: avgPrice,
-        imgURL: imgURL,
-        supply: priceArr.length,
-        demand: 0
-    });
-    return prof;
+
+    let pro = Profile.build()
+
+    pro.avgPrice    = avgPrice
+    pro.isbn        = isbn
+    pro.supply      = priceArr.length
+
+    let demand = await set_demand(pro)
+    
+    pro.demand = demand.demand
+    pro.maxBid = demand.maxBid
+    pro.avgBid = demand.avgBid
+
+    let bookinfo    = JSON.parse(await rp(`http://localhost:5000/isbn/${pro.isbn}`))
+
+    pro.title   = bookinfo.title
+    pro.author  = bookinfo.author
+    pro.edition = bookinfo.edition
+    
+    return pro;
+}
+async function set_demand(profile){
+    
+    
+    let demand = new Object()
+    const url = new URL("https://www.ebay.com/sch/i.html");
+    url.searchParams.append('_nkw', profile.isbn); //search terms
+    url.searchParams.append('LH_Complete', '1'); //complete
+    url.searchParams.append('LH_Sold', '1'); //sold
+    url.searchParams.append('LH_PrefLoc', '1'); //prefLoc
+    
+    const html = await rp(url.href);
+    
+    const $ = cheerio.load(html);
+    let bids = []
+    $('.s-item').each(function (i, element) {
+        let bidcount = $(this).find('.s-item__bids.s-item__bidCount')[0] ? $(this).find('.s-item__bids.s-item__bidCount').text().match(/[0-9]+/g).join('') : null 
+        if(bidcount)
+            bids.push(parseInt(bidcount))  
+    })
+    
+    profile.demand  = $('.s-item').length 
+    
+
+    let avg = bids.length > 0 ? parseInt(bids.reduce((previous, current) => previous + current) / bids.length.toFixed(1)) : null;
+    //profile.maxBid  = bids.length > 0 ? Math.max(...bids) : null;
+    //profile.avgBid  = avg > 0 ? avg : null
+    demand.demand = $('.s-item').length 
+    demand.maxBid = bids.length > 0 ? Math.max(...bids) : null;
+    demand.avgBid = avg > 0 ? avg : null
+    return demand
+
 }
 function createEbayURL(searchTerms) {
     const url = new URL("https://www.ebay.com/sch/i.html");
     url.searchParams.append('_nkw', searchTerms); //search terms
-    url.searchParams.append('LH_Complete', '1'); //complete
-    url.searchParams.append('LH_Sold', '1'); //sold
+    url.searchParams.append('LH_Complete', '0'); //complete
+    url.searchParams.append('LH_Sold', '0'); //sold
     url.searchParams.append('LH_PrefLoc', '1'); //prefLoc
+    
     // url.searchParams.append('_ipg','25') //items per page
     // const base = "https://www.ebay.com/sch/i.html?"
     // const keywords = `_nkw=${searchTerms}`
