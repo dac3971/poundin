@@ -29,11 +29,11 @@ app.get('/isbn/:isbn', async (req, res) => {
 });
 app.get('/run', async (req, res) => {
     let htmlResponse = '<ul>';
+    res.set('Content-Type', 'text/html');
     const checkByPkArray = [];
-    const search_url = new URL("https://www.ebay.com/sch/i.html");
+    const search_url = createEbayURL('textbook', 0);
     search_url.searchParams.append('_udlo', '50'); //floor price
     search_url.searchParams.append('_sop', '10'); //newly listed
-    search_url.searchParams.append('_nkw', 'textbook'); //search term
     search_url.searchParams.append('_pgn', '1'); //page
     search_url.searchParams.append('_ipg', '25'); //items per page
     const html = await rp(search_url.href);
@@ -58,20 +58,23 @@ app.get('/run', async (req, res) => {
         // console.log(infoObj)
         const isbn = itemModel.getDataValue('isbn');
         //check if its in profiles yet
-        if (isbn)
-            Profile.findByPk(isbn).then(async (profModel) => {
-                const finalProfModel = !profModel ? await processProfile(isbn) : profModel;
-                if (!profModel)
-                    await finalProfModel.save().catch(e => console.log(e.toString()));
-                itemModel.setDataValue('spread', finalProfModel.getDataValue('avgPrice') - itemModel.getDataValue('price'));
-                await itemModel.save().then(writtenItemModel => {
-                    itemsWritten++;
-                    htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`;
-                    res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`);
-                    if (itemsWritten === urlsToProcess.length)
-                        res.end();
+        if (isbn) {
+            const profModel = await Profile.findByPk(isbn);
+            const finalProfModel = !profModel ? await processProfile(isbn) : profModel;
+            if (!profModel)
+                await finalProfModel.save().then(pModel => {
+                    profilesWritten++;
                 }).catch(e => console.log(e.toString()));
-            });
+            //TODO: see if we can inner join so we don't need a spread column
+            itemModel.setDataValue('spread', finalProfModel.getDataValue('avgPrice') - itemModel.getDataValue('price'));
+            const writtenItemModel = await itemModel.save();
+            itemsWritten++;
+            htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`;
+            if (itemsWritten === urlsToProcess.length) {
+                res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`);
+                res.end();
+            }
+        }
     });
 });
 app.get('/get/:id', (req, res) => {
@@ -120,9 +123,9 @@ async function processData(url) {
 }
 async function processProfile(isbn) {
     const priceArr = [];
-    const ebayURL = createEbayURL(isbn);
+    const ebayURL = createEbayURL(isbn, 1);
     // const camelURL = createCamelURL(isbn)
-    const resultsHTML = await Promise.all([fetchISBNdata(isbn), rp.get(ebayURL)]); //rp.get(camelURL)])//add the isbn page promise
+    const resultsHTML = await Promise.all([fetchISBNdata(isbn), rp.get(ebayURL.href)]); //rp.get(camelURL)])//add the isbn page promise
     const isbnObj = resultsHTML[0];
     const $ = cheerio.load(resultsHTML[1]);
     const demand = set_demand($);
@@ -150,15 +153,17 @@ async function processProfile(isbn) {
         supply: priceArr.length,
         demand: demand.demand,
         maxBid: demand.maxBid,
-        avgBid: demand.avgBid
+        avgBid: demand.avgBid,
+        maxPrice: maxPrice,
+        minPrice: minPrice
     });
     return prof;
 }
-function createEbayURL(searchTerms) {
+function createEbayURL(searchTerms, over) {
     const url = new URL("https://www.ebay.com/sch/i.html");
     url.searchParams.append('_nkw', searchTerms); //search terms
-    url.searchParams.append('LH_Complete', '1'); //complete
-    url.searchParams.append('LH_Sold', '1'); //sold
+    url.searchParams.append('LH_Complete', over.toString()); //complete
+    url.searchParams.append('LH_Sold', over.toString()); //sold
     url.searchParams.append('LH_PrefLoc', '1'); //prefLoc
     // url.searchParams.append('_ipg','25') //items per page
     // const base = "https://www.ebay.com/sch/i.html?"
@@ -174,7 +179,7 @@ function createEbayURL(searchTerms) {
     // const sold = "&LH_Sold=1"
     // const usaOnly = "&LH_PrefLoc=1"
     // const completeURL = base.concat(keywords,category,completed,sold,usaOnly)
-    return url.href;
+    return url;
 }
 function createCamelURL(isbn) {
     return `https://camelcamelcamel.com/product/${isbn}`;

@@ -12,8 +12,10 @@ module.exports = (sequelize, DataTypes) => {
         imgURL: DataTypes.STRING,
         supply: DataTypes.INTEGER,
         demand: DataTypes.INTEGER,
-        maxBid: DataTypes.INTEGER,
-        avgBid: DataTypes.INTEGER
+        maxBid: DataTypes.FLOAT,
+        avgBid: DataTypes.FLOAT,
+        maxPrice: DataTypes.FLOAT,
+        minPrice: DataTypes.FLOAT
     })
 
     Profile.associate = (models) => {
