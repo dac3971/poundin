@@ -20,9 +20,15 @@ app.get('/', async (req,res) =>{
     // const info = await processData('https://www.ebay.com/itm/163474335398')
     // const info = await processProfile('0683083678')
     // res.send(info)
-    Item.findAll({where: {isbn: '9780849322174'} }).then(r=>{
-        r.forEach(row=>console.log(row.toString()))
-    })
+    // Item.findAll({where: {isbn: '9780849322174'} }).then(r=>{
+    //     r.forEach(row=>console.log(row.toString()))
+    // })
+})
+
+app.get('/isbn/:isbn', async (req, res) =>{
+    const isbnObj = await fetchISBNdata(req.params.isbn)
+    res.header("Content-Type",'application/json')
+    res.send(JSON.stringify(isbnObj,null,4))
 })
 
 
@@ -134,11 +140,12 @@ async function processData(url){
 async function processProfile(isbn){
     const priceArr = []
     const ebayURL = createEbayURL(isbn)
-    const camelURL = createCamelURL(isbn)
-    const isbnURL = ''
+    // const camelURL = createCamelURL(isbn)
 
-    const resultsHTML = await Promise.all([rp.get(ebayURL),rp.get(camelURL)])//add the isbn page promise
-    const $ = cheerio.load(resultsHTML[0])
+    const resultsHTML = await Promise.all([fetchISBNdata(isbn), rp.get(ebayURL)])//rp.get(camelURL)])//add the isbn page promise
+    const isbnObj = resultsHTML[0]
+    const $ = cheerio.load(resultsHTML[1])
+    const demand = set_demand($)
     $('span.s-item__price').find('span.POSITIVE').not('span.ITALIC').each(function(i,elem){
         const price = parseFloat($(this).text().replace("$",''))
         priceArr.push(price)
@@ -146,27 +153,24 @@ async function processProfile(isbn){
     // const avgEbayPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
     let minPrice = Math.min(...priceArr)
     let maxPrice = Math.max(...priceArr)
-    const camelPrice = cheerio.load(resultsHTML[1])('div.pricetype_label').filter(function() {
-        return $(this).text().trim() === '3rd Party Used';
-      }).parent().next().next().next('td').find('span.black').text().trim()
-      || 0
-    if(camelPrice>0) priceArr.push(camelPrice)
+    // const camelPrice = cheerio.load(resultsHTML[2])('div.pricetype_label').filter(function() {
+    //     return $(this).text().trim() === '3rd Party Used';
+    //   }).parent().next().next().next('td').find('span.black').text().trim()
+    //   || 0
+    // if(camelPrice>0) priceArr.push(camelPrice)
     const avgPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
-    const title = ''
-    const edition = ''
-    const author = ''
-    const imgURL = ''
-
     // const profile = new Profile(isbn,title,edition,author,+avgEbayPrice,imgURL,priceArr.length,4)
     const prof = Profile.build({
         isbn: isbn,
-        title: title,
-        edition: edition,
-        author: author,
+        title: isbnObj.title,
+        edition: isbnObj.edition,
+        author: isbnObj.author,
         avgPrice: avgPrice,
-        imgURL: imgURL,
+        imgURL: isbnObj.imgURL,
         supply: priceArr.length,
-        demand: 0
+        demand: demand.demand,
+        maxBid: demand.maxBid,
+        avgBid: demand.avgBid
     })
     
     return prof
@@ -197,4 +201,53 @@ function createEbayURL (searchTerms) {
 
 function createCamelURL (isbn){
     return `https://camelcamelcamel.com/product/${isbn}`
+}
+
+async function fetchISBNdata (isbn){
+    const html = await rp(`https://isbndb.com/book/${isbn}`)
+    const $ = cheerio.load(html)
+    const table = $('.table.table-hover.table-responsive ').find('th')
+    const title = table.filter(function(){
+        return $(this).text().toLowerCase() == 'full title'
+    }).next('td').text()
+    const edition = table.filter(function(){
+        return $(this).text().toLowerCase() == 'edition'
+    }).next('td').text()
+    const publishDate = table.filter(function(){
+        return $(this).text().toLowerCase() == 'publish date'
+    }).next('td').text()
+    const authorList = []
+    table.filter(function(){
+        return $(this).text().toLowerCase() == 'authors'
+    }).next('td').find('a').each(function (i,elem){
+        authorList.push($(this).text())
+    })
+    const imgURL = $('.artwork').children()[0].attribs.data
+    const isbnObj = {
+        author: authorList.join(';'),
+        title: title,
+        edition: edition,
+        publishDate: publishDate,
+        imgURL: imgURL
+    }
+    return isbnObj
+}
+
+function set_demand($){
+    
+    let bids = []
+    $('.s-item').each(function (i, element) {
+        let bidcount = $(this).find('.s-item__bids.s-item__bidCount')[0] ? $(this).find('.s-item__bids.s-item__bidCount').text().match(/[0-9]+/g).join('') : null 
+        if(bidcount)
+            bids.push(parseInt(bidcount))  
+    })
+
+    let avg = bids.length > 0 ? bids.reduce((previous, current) => previous + current) / bids.length : null;
+    //profile.maxBid  = bids.length > 0 ? Math.max(...bids) : null;
+    const demand = {
+        demand: $('.s-item').length,
+        maxBid: bids.length > 0 ? Math.max(...bids) : null,
+        avgBid: avg > 0 ? avg : null
+    }
+    return demand
 }
