@@ -31,6 +31,11 @@ app.get('/isbn/:isbn', async (req, res) =>{
     res.send(JSON.stringify(isbnObj,null,4))
 })
 
+app.get('/profile/:isbn', async (req, res) =>{
+    const profModel = await Profile.findByPk(req.params.isbn)
+    res.header("Content-Type",'application/json')
+    res.send(profModel ? profModel.toJSON() : {})
+})
 
 app.get('/run', async (req,res) => {
     let htmlResponse = '<ul>'
