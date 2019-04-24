@@ -4,6 +4,8 @@ const rp = require("request-promise")
 const models = require('./models')
 const Item = require('./models').Item
 const Profile = require('./models').Profile
+const Sequelize = require('sequelize')
+const { gt } = Sequelize.Op;
 import { concise } from './helpers/functions'
 
 
@@ -15,14 +17,14 @@ app.use(function(req, res, next) {
   })
 
 
-app.get('/', async (req,res) =>{
-    // TESTING A SINGLE CALL
-    // const info = await processData('https://www.ebay.com/itm/163474335398')
-    // const info = await processProfile('0683083678')
-    // res.send(info)
-    // Item.findAll({where: {isbn: '9780849322174'} }).then(r=>{
-    //     r.forEach(row=>console.log(row.toString()))
-    // })
+app.get('/items/:limit', async (req,res) =>{
+    const arrOfItemModels = await Item.findAll({
+        where: { spread: { [gt]: -100 } },
+        limit: req.params.limit
+    })
+    const arrOfItemObjects = arrOfItemModels.map(model=>model.toJSON())
+    res.header("Content-Type",'application/json')
+    res.send(arrOfItemObjects)
 })
 
 app.get('/isbn/:isbn', async (req, res) =>{
