@@ -4,6 +4,8 @@ const rp = require("request-promise")
 const models = require('./models')
 const Item = require('./models').Item
 const Profile = require('./models').Profile
+const Sequelize = require('sequelize')
+const { gt } = Sequelize.Op;
 import { concise } from './helpers/functions'
 
 
@@ -15,24 +17,35 @@ app.use(function(req, res, next) {
   })
 
 
-app.get('/', async (req,res) =>{
-    // TESTING A SINGLE CALL
-    // const info = await processData('https://www.ebay.com/itm/163474335398')
-    // const info = await processProfile('0683083678')
-    // res.send(info)
-    Item.findAll({where: {isbn: '9780849322174'} }).then(r=>{
-        r.forEach(row=>console.log(row.toString()))
+app.get('/items/:limit', async (req,res) =>{
+    const arrOfItemModels = await Item.findAll({
+        where: { spread: { [gt]: -100 } },
+        limit: req.params.limit
     })
+    const arrOfItemObjects = arrOfItemModels.map(model=>model.toJSON())
+    res.header("Content-Type",'application/json')
+    res.send(arrOfItemObjects)
 })
 
+app.get('/isbn/:isbn', async (req, res) =>{
+    const isbnObj = await fetchISBNdata(req.params.isbn)
+    res.header("Content-Type",'application/json')
+    res.send(JSON.stringify(isbnObj,null,4))
+})
+
+app.get('/profile/:isbn', async (req, res) =>{
+    const profModel = await Profile.findByPk(req.params.isbn)
+    res.header("Content-Type",'application/json')
+    res.send(profModel ? profModel.toJSON() : {})
+})
 
 app.get('/run', async (req,res) => {
     let htmlResponse = '<ul>'
+    res.set('Content-Type', 'text/html')
     const checkByPkArray = []
-    const search_url = new URL("https://www.ebay.com/sch/i.html")
+    const search_url = createEbayURL('textbook',0)
     search_url.searchParams.append('_udlo','50') //floor price
     search_url.searchParams.append('_sop','10') //newly listed
-    search_url.searchParams.append('_nkw','textbook') //search term
     search_url.searchParams.append('_pgn','1') //page
     search_url.searchParams.append('_ipg','25') //items per page
 
@@ -64,18 +77,23 @@ app.get('/run', async (req,res) => {
         // console.log(infoObj)
         const isbn = itemModel.getDataValue('isbn')
         //check if its in profiles yet
-        if(isbn)
-            Profile.findByPk(isbn).then(async (profModel)=>{
-                const finalProfModel = !profModel ? await processProfile(isbn) : profModel
-                if(!profModel) await finalProfModel.save().catch(e=>console.log(e.toString()))
-                itemModel.setDataValue('spread', finalProfModel.getDataValue('avgPrice')-itemModel.getDataValue('price') )
-                await itemModel.save().then(writtenItemModel => {
-                    itemsWritten++
-                    htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`
-                    res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`)
-                    if(itemsWritten === urlsToProcess.length) res.end()
-                }).catch(e=>console.log(e.toString()))
-            })
+        if(isbn){
+            const profModel = await Profile.findByPk(isbn)
+            const finalProfModel = !profModel ? await processProfile(isbn) : profModel
+            if(!profModel) await finalProfModel.save().then(pModel=>{
+                profilesWritten++
+            }).catch(e=>console.log(e.toString()))
+                
+            //TODO: see if we can inner join so we don't need a spread column
+            itemModel.setDataValue('spread', finalProfModel.getDataValue('avgPrice')-itemModel.getDataValue('price'))
+            const writtenItemModel = await itemModel.save()
+            itemsWritten++
+            htmlResponse += `<li>Wrote: ${writtenItemModel.getDataValue('listingID')}</li>`
+            if(itemsWritten === urlsToProcess.length){
+                res.write(`${htmlResponse}<li>${itemsWritten} items written</li></ul>`)
+                res.end()
+            }
+        }
     })
 })
 
@@ -133,12 +151,13 @@ async function processData(url){
 
 async function processProfile(isbn){
     const priceArr = []
-    const ebayURL = createEbayURL(isbn)
-    const camelURL = createCamelURL(isbn)
-    const isbnURL = ''
+    const ebayURL = createEbayURL(isbn,1)
+    // const camelURL = createCamelURL(isbn)
 
-    const resultsHTML = await Promise.all([rp.get(ebayURL),rp.get(camelURL)])//add the isbn page promise
-    const $ = cheerio.load(resultsHTML[0])
+    const resultsHTML = await Promise.all([fetchISBNdata(isbn), rp.get(ebayURL.href)])//rp.get(camelURL)])//add the isbn page promise
+    const isbnObj = resultsHTML[0]
+    const $ = cheerio.load(resultsHTML[1])
+    const demand = set_demand($)
     $('span.s-item__price').find('span.POSITIVE').not('span.ITALIC').each(function(i,elem){
         const price = parseFloat($(this).text().replace("$",''))
         priceArr.push(price)
@@ -146,37 +165,36 @@ async function processProfile(isbn){
     // const avgEbayPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
     let minPrice = Math.min(...priceArr)
     let maxPrice = Math.max(...priceArr)
-    const camelPrice = cheerio.load(resultsHTML[1])('div.pricetype_label').filter(function() {
-        return $(this).text().trim() === '3rd Party Used';
-      }).parent().next().next().next('td').find('span.black').text().trim()
-      || 0
-    if(camelPrice>0) priceArr.push(camelPrice)
+    // const camelPrice = cheerio.load(resultsHTML[2])('div.pricetype_label').filter(function() {
+    //     return $(this).text().trim() === '3rd Party Used';
+    //   }).parent().next().next().next('td').find('span.black').text().trim()
+    //   || 0
+    // if(camelPrice>0) priceArr.push(camelPrice)
     const avgPrice = priceArr.length>0 ? (priceArr.reduce((previous, current) => previous + current) / priceArr.length).toFixed(2) : 0
-    const title = ''
-    const edition = ''
-    const author = ''
-    const imgURL = ''
-
     // const profile = new Profile(isbn,title,edition,author,+avgEbayPrice,imgURL,priceArr.length,4)
     const prof = Profile.build({
         isbn: isbn,
-        title: title,
-        edition: edition,
-        author: author,
+        title: isbnObj.title,
+        edition: isbnObj.edition,
+        author: isbnObj.author,
         avgPrice: avgPrice,
-        imgURL: imgURL,
+        imgURL: isbnObj.imgURL,
         supply: priceArr.length,
-        demand: 0
+        demand: demand.demand,
+        maxBid: demand.maxBid,
+        avgBid: demand.avgBid,
+        maxPrice: maxPrice,
+        minPrice: minPrice
     })
     
     return prof
 }
 
-function createEbayURL (searchTerms) {
+function createEbayURL (searchTerms,over) {
     const url = new URL("https://www.ebay.com/sch/i.html")
     url.searchParams.append('_nkw',searchTerms) //search terms
-    url.searchParams.append('LH_Complete','1') //complete
-    url.searchParams.append('LH_Sold','1') //sold
+    url.searchParams.append('LH_Complete',over.toString()) //complete
+    url.searchParams.append('LH_Sold',over.toString()) //sold
     url.searchParams.append('LH_PrefLoc','1') //prefLoc
     // url.searchParams.append('_ipg','25') //items per page
     // const base = "https://www.ebay.com/sch/i.html?"
@@ -192,9 +210,58 @@ function createEbayURL (searchTerms) {
     // const sold = "&LH_Sold=1"
     // const usaOnly = "&LH_PrefLoc=1"
     // const completeURL = base.concat(keywords,category,completed,sold,usaOnly)
-    return url.href
+    return url
 }
 
 function createCamelURL (isbn){
     return `https://camelcamelcamel.com/product/${isbn}`
+}
+
+async function fetchISBNdata (isbn){
+    const html = await rp(`https://isbndb.com/book/${isbn}`)
+    const $ = cheerio.load(html)
+    const table = $('.table.table-hover.table-responsive ').find('th')
+    const title = table.filter(function(){
+        return $(this).text().toLowerCase() == 'full title'
+    }).next('td').text()
+    const edition = table.filter(function(){
+        return $(this).text().toLowerCase() == 'edition'
+    }).next('td').text()
+    const publishDate = table.filter(function(){
+        return $(this).text().toLowerCase() == 'publish date'
+    }).next('td').text()
+    const authorList = []
+    table.filter(function(){
+        return $(this).text().toLowerCase() == 'authors'
+    }).next('td').find('a').each(function (i,elem){
+        authorList.push($(this).text())
+    })
+    const imgURL = $('.artwork').children()[0].attribs.data
+    const isbnObj = {
+        author: authorList.join(';'),
+        title: title,
+        edition: edition,
+        publishDate: publishDate,
+        imgURL: imgURL
+    }
+    return isbnObj
+}
+
+function set_demand($){
+    
+    let bids = []
+    $('.s-item').each(function (i, element) {
+        let bidcount = $(this).find('.s-item__bids.s-item__bidCount')[0] ? $(this).find('.s-item__bids.s-item__bidCount').text().match(/[0-9]+/g).join('') : null 
+        if(bidcount)
+            bids.push(parseInt(bidcount))  
+    })
+
+    let avg = bids.length > 0 ? bids.reduce((previous, current) => previous + current) / bids.length : null;
+    //profile.maxBid  = bids.length > 0 ? Math.max(...bids) : null;
+    const demand = {
+        demand: $('.s-item').length,
+        maxBid: bids.length > 0 ? Math.max(...bids) : null,
+        avgBid: avg > 0 ? avg : null
+    }
+    return demand
 }

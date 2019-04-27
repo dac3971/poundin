@@ -1,5 +1,4 @@
 const Sequelize = require("sequelize");
-const config = require('../config/config.json');
 const sequelize = new Sequelize('poundinpuss','postgres','testing12',{//config.database, config.username, config.password, {
   dialect: 'postgres'
 });
